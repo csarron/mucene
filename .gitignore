@@ -1,0 +1,7 @@
+# IntelliJ
+out/
+.idea/
+build/
+.gradle/
+# Mac
+.DS_Store
