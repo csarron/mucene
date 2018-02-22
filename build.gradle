@@ -1,5 +1,5 @@
 group 'com.cscao.libs'
-version '0.1'
+version '0.1.1'
 
 apply plugin: 'java'
 apply plugin: 'maven'
@@ -14,6 +14,8 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 
 task myJavadocs(type: Javadoc) {
     source = sourceSets.main.allJava
+    options.tags = ['lucene.experimental:a:WARNING: This API is experimental and might change in incompatible ways in the next release.',
+                    'lucene.internal:a:NOTE: This API is for internal purposes only and might change in incompatible ways in the next release.']
     options.addStringOption('Xdoclint:none', '-quiet')
 }
 
