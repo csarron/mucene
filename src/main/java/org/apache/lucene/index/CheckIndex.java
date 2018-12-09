@@ -45,6 +45,7 @@ import org.apache.lucene.index.CheckIndex.Status.DocValuesStatus;
 import org.apache.lucene.index.PointValues.IntersectVisitor;
 import org.apache.lucene.index.PointValues.Relation;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.DocValuesFieldExistsQuery;
 import org.apache.lucene.search.LeafFieldComparator;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
@@ -52,7 +53,6 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.Bits;
@@ -60,6 +60,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CommandLineUtil;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.FutureArrays;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LongBitSet;
 import org.apache.lucene.util.StringHelper;
@@ -104,12 +105,6 @@ public final class CheckIndex implements Closeable {
 
     /** True if we were unable to locate and load the segments_N file. */
     public boolean missingSegments;
-
-    /** True if we were unable to open the segments_N file. */
-    public boolean cantOpenSegments;
-
-    /** True if we were unable to read the version number from segments_N file. */
-    public boolean missingSegmentVersion;
 
     /** Name of latest segments_N file in the index. */
     public String segmentsFileName;
@@ -410,7 +405,7 @@ public final class CheckIndex implements Closeable {
    * that would otherwise be more complicated to debug if they had to close the writer
    * for each check.
    */
-  public CheckIndex(Directory dir, Lock writeLock) throws IOException {
+  public CheckIndex(Directory dir, Lock writeLock) {
     this.dir = dir;
     this.writeLock = writeLock;
     this.infoStream = null;
@@ -538,6 +533,19 @@ public final class CheckIndex implements Closeable {
       return result;
     }
 
+    if (infoStream != null) {
+      int maxDoc = 0;
+      int delCount = 0;
+      for (SegmentCommitInfo info : sis) {
+        maxDoc += info.info.maxDoc();
+        delCount += info.getDelCount();
+      }
+      infoStream.println(String.format(Locale.ROOT, "%.2f%% total deletions; %d documents; %d deleteions",
+                                       100.*delCount/maxDoc,
+                                       maxDoc,
+                                       delCount));
+    }
+    
     // find the oldest and newest segment versions
     Version oldest = null;
     Version newest = null;
@@ -559,38 +567,6 @@ public final class CheckIndex implements Closeable {
 
     final int numSegments = sis.size();
     final String segmentsFileName = sis.getSegmentsFileName();
-    // note: we only read the format byte (required preamble) here!
-    IndexInput input = null;
-    try {
-      input = dir.openInput(segmentsFileName, IOContext.READONCE);
-    } catch (Throwable t) {
-      if (failFast) {
-        throw IOUtils.rethrowAlways(t);
-      }
-      msg(infoStream, "ERROR: could not open segments file in directory");
-      if (infoStream != null) {
-        t.printStackTrace(infoStream);
-      }
-      result.cantOpenSegments = true;
-      return result;
-    }
-    try {
-      /*int format =*/ input.readInt();
-    } catch (Throwable t) {
-      if (failFast) {
-        throw IOUtils.rethrowAlways(t);
-      }
-      msg(infoStream, "ERROR: could not read segment file version in directory");
-      if (infoStream != null) {
-        t.printStackTrace(infoStream);
-      }
-      result.missingSegmentVersion = true;
-      return result;
-    } finally {
-      if (input != null)
-        input.close();
-    }
-
     result.segmentsFileName = segmentsFileName;
     result.numSegments = numSegments;
     result.userData = sis.getUserData();
@@ -781,7 +757,10 @@ public final class CheckIndex implements Closeable {
             throw new RuntimeException("Points test failed");
           }
         }
-
+        final String softDeletesField = reader.getFieldInfos().getSoftDeletesField();
+        if (softDeletesField != null) {
+          checkSoftDeletes(softDeletesField, info, reader, infoStream, failFast);
+        }
         msg(infoStream, "");
         
         if (verbose) {
@@ -1940,12 +1919,12 @@ public final class CheckIndex implements Closeable {
         int offset = bytesPerDim * dim;
 
         // Compare to last cell:
-        if (StringHelper.compare(bytesPerDim, packedValue, offset, lastMinPackedValue, offset) < 0) {
+        if (FutureArrays.compareUnsigned(packedValue, offset, offset + bytesPerDim, lastMinPackedValue, offset, offset + bytesPerDim) < 0) {
           // This doc's point, in this dimension, is lower than the minimum value of the last cell checked:
           throw new RuntimeException("packed points value " + Arrays.toString(packedValue) + " for field=\"" + fieldName + "\", docID=" + docID + " is out-of-bounds of the last cell min=" + Arrays.toString(lastMinPackedValue) + " max=" + Arrays.toString(lastMaxPackedValue) + " dim=" + dim);
         }
 
-        if (StringHelper.compare(bytesPerDim, packedValue, offset, lastMaxPackedValue, offset) > 0) {
+        if (FutureArrays.compareUnsigned(packedValue, offset, offset + bytesPerDim, lastMaxPackedValue, offset, offset + bytesPerDim) > 0) {
           // This doc's point, in this dimension, is greater than the maximum value of the last cell checked:
           throw new RuntimeException("packed points value " + Arrays.toString(packedValue) + " for field=\"" + fieldName + "\", docID=" + docID + " is out-of-bounds of the last cell min=" + Arrays.toString(lastMinPackedValue) + " max=" + Arrays.toString(lastMaxPackedValue) + " dim=" + dim);
         }
@@ -1954,7 +1933,7 @@ public final class CheckIndex implements Closeable {
       // In the 1D case, PointValues must make a single in-order sweep through all values, and tie-break by
       // increasing docID:
       if (numDims == 1) {
-        int cmp = StringHelper.compare(bytesPerDim, lastPackedValue, 0, packedValue, 0);
+        int cmp = FutureArrays.compareUnsigned(lastPackedValue, 0, bytesPerDim, packedValue, 0, bytesPerDim);
         if (cmp > 0) {
           throw new RuntimeException("packed points value " + Arrays.toString(packedValue) + " for field=\"" + fieldName + "\", for docID=" + docID + " is out-of-order vs the previous document's value " + Arrays.toString(lastPackedValue));
         } else if (cmp == 0) {
@@ -1977,27 +1956,27 @@ public final class CheckIndex implements Closeable {
       for(int dim=0;dim<numDims;dim++) {
         int offset = bytesPerDim * dim;
 
-        if (StringHelper.compare(bytesPerDim, minPackedValue, offset, maxPackedValue, offset) > 0) {
+        if (FutureArrays.compareUnsigned(minPackedValue, offset, offset + bytesPerDim, maxPackedValue, offset, offset + bytesPerDim) > 0) {
           throw new RuntimeException("packed points cell minPackedValue " + Arrays.toString(minPackedValue) +
                                      " is out-of-bounds of the cell's maxPackedValue " + Arrays.toString(maxPackedValue) + " dim=" + dim + " field=\"" + fieldName + "\"");
         }
 
         // Make sure this cell is not outside of the global min/max:
-        if (StringHelper.compare(bytesPerDim, minPackedValue, offset, globalMinPackedValue, offset) < 0) {
+        if (FutureArrays.compareUnsigned(minPackedValue, offset, offset + bytesPerDim, globalMinPackedValue, offset, offset + bytesPerDim) < 0) {
           throw new RuntimeException("packed points cell minPackedValue " + Arrays.toString(minPackedValue) +
                                      " is out-of-bounds of the global minimum " + Arrays.toString(globalMinPackedValue) + " dim=" + dim + " field=\"" + fieldName + "\"");
         }
 
-        if (StringHelper.compare(bytesPerDim, maxPackedValue, offset, globalMinPackedValue, offset) < 0) {
+        if (FutureArrays.compareUnsigned(maxPackedValue, offset, offset + bytesPerDim, globalMinPackedValue, offset, offset + bytesPerDim) < 0) {
           throw new RuntimeException("packed points cell maxPackedValue " + Arrays.toString(maxPackedValue) +
                                      " is out-of-bounds of the global minimum " + Arrays.toString(globalMinPackedValue) + " dim=" + dim + " field=\"" + fieldName + "\"");
         }
 
-        if (StringHelper.compare(bytesPerDim, minPackedValue, offset, globalMaxPackedValue, offset) > 0) {
+        if (FutureArrays.compareUnsigned(minPackedValue, offset, offset + bytesPerDim, globalMaxPackedValue, offset, offset + bytesPerDim) > 0) {
           throw new RuntimeException("packed points cell minPackedValue " + Arrays.toString(minPackedValue) +
                                      " is out-of-bounds of the global maximum " + Arrays.toString(globalMaxPackedValue) + " dim=" + dim + " field=\"" + fieldName + "\"");
         }
-        if (StringHelper.compare(bytesPerDim, maxPackedValue, offset, globalMaxPackedValue, offset) > 0) {
+        if (FutureArrays.compareUnsigned(maxPackedValue, offset, offset + bytesPerDim, globalMaxPackedValue, offset, offset + bytesPerDim) > 0) {
           throw new RuntimeException("packed points cell maxPackedValue " + Arrays.toString(maxPackedValue) +
                                      " is out-of-bounds of the global maximum " + Arrays.toString(globalMaxPackedValue) + " dim=" + dim + " field=\"" + fieldName + "\"");
         }
@@ -2195,7 +2174,7 @@ public final class CheckIndex implements Closeable {
           throw new RuntimeException("dv iterator field=" + field + ": doc=" + (doc-1) + " has unstable advanceExact");
         }
 
-        if (i % 1 == 0) {
+        if (i % 2 == 0) {
           int doc2 = it2.nextDoc();
           if (doc != doc2) {
             throw new RuntimeException("dv iterator field=" + field + ": doc=" + doc + " was not found through advance() (got: " + doc2 + ")");
@@ -2849,6 +2828,25 @@ public final class CheckIndex implements Closeable {
       return 0;
     } else {
       return 1;
+    }
+  }
+
+  private static void checkSoftDeletes(String softDeletesField, SegmentCommitInfo info, SegmentReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+    if (infoStream != null)
+      infoStream.print("    test: check soft deletes.....");
+    try {
+      int softDeletes = PendingSoftDeletes.countSoftDeletes(DocValuesFieldExistsQuery.getDocValuesDocIdSetIterator(softDeletesField, reader), reader.getLiveDocs());
+      if (softDeletes != info.getSoftDelCount()) {
+        throw new RuntimeException("actual soft deletes: " + softDeletes + " but expected: " +info.getSoftDelCount());
+      }
+    } catch (Exception e) {
+      if (failFast) {
+        throw IOUtils.rethrowAlways(e);
+      }
+      msg(infoStream, "ERROR [" + String.valueOf(e.getMessage()) + "]");
+      if (infoStream != null) {
+        e.printStackTrace(infoStream);
+      }
     }
   }
 

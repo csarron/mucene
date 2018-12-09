@@ -30,16 +30,19 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.WordlistLoader;
 
 /**
- * Filters {@link StandardTokenizer} with {@link StandardFilter}, {@link
- * LowerCaseFilter} and {@link StopFilter}, using a list of
- * English stop words.
+ * Filters {@link StandardTokenizer} with {@link LowerCaseFilter} and
+ * {@link StopFilter}, using a configurable list of stop words.
  */
 public final class StandardAnalyzer extends StopwordAnalyzerBase {
 
-  /** An unmodifiable set containing some common English words that are not usually useful
-  for searching.*/
+  /**
+   * An unmodifiable set containing some common English words that are not
+   * usually useful for searching.
+   * @deprecated Use the stop words on EnglishAnalyzer in the analysis-common module
+   */
+  @Deprecated
   public static final CharArraySet ENGLISH_STOP_WORDS_SET;
-  
+
   static {
     final List<String> stopWords = Arrays.asList(
       "a", "an", "and", "are", "as", "at", "be", "but", "by",
@@ -49,16 +52,21 @@ public final class StandardAnalyzer extends StopwordAnalyzerBase {
       "they", "this", "to", "was", "will", "with"
     );
     final CharArraySet stopSet = new CharArraySet(stopWords, false);
-    ENGLISH_STOP_WORDS_SET = CharArraySet.unmodifiableSet(stopSet); 
+    ENGLISH_STOP_WORDS_SET = CharArraySet.unmodifiableSet(stopSet);
   }
+
   
   /** Default maximum allowed token length */
   public static final int DEFAULT_MAX_TOKEN_LENGTH = 255;
 
   private int maxTokenLength = DEFAULT_MAX_TOKEN_LENGTH;
 
-  /** An unmodifiable set containing some common English words that are usually not
-  useful for searching. */
+  /**
+   * An unmodifiable set containing some common English words that are usually not
+   * useful for searching.
+   * @deprecated Use the stop words on EnglishAnalyzer in the analysis-common module
+   */
+  @Deprecated
   public static final CharArraySet STOP_WORDS_SET = ENGLISH_STOP_WORDS_SET;
 
   /** Builds an analyzer with the given stop words.
@@ -102,8 +110,7 @@ public final class StandardAnalyzer extends StopwordAnalyzerBase {
   protected TokenStreamComponents createComponents(final String fieldName) {
     final StandardTokenizer src = new StandardTokenizer();
     src.setMaxTokenLength(maxTokenLength);
-    TokenStream tok = new StandardFilter(src);
-    tok = new LowerCaseFilter(tok);
+    TokenStream tok = new LowerCaseFilter(src);
     tok = new StopFilter(tok, stopwords);
     return new TokenStreamComponents(src, tok) {
       @Override
@@ -118,8 +125,6 @@ public final class StandardAnalyzer extends StopwordAnalyzerBase {
 
   @Override
   protected TokenStream normalize(String fieldName, TokenStream in) {
-    TokenStream result = new StandardFilter(in);
-    result = new LowerCaseFilter(result);
-    return result;
+    return new LowerCaseFilter(in);
   }
 }

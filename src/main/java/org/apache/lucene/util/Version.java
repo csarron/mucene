@@ -130,6 +130,27 @@ public final class Version {
   public static final Version LUCENE_6_6_2 = new Version(6, 6, 2);
 
   /**
+   * Match settings and bugs in Lucene's 6.6.3 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_6_6_3 = new Version(6, 6, 3);
+
+  /**
+   * Match settings and bugs in Lucene's 6.6.4 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_6_6_4 = new Version(6, 6, 4);
+
+  /**
+   * Match settings and bugs in Lucene's 6.6.5 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_6_6_5 = new Version(6, 6, 5);
+
+  /**
    * Match settings and bugs in Lucene's 7.0.0 release.
    * @deprecated (7.1.0) Use latest
    */
@@ -152,18 +173,46 @@ public final class Version {
 
   /**
    * Match settings and bugs in Lucene's 7.2.0 release.
-   * @deprecated (7.2.1) Use latest
+   * @deprecated (7.3.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_7_2_0 = new Version(7, 2, 0);
 
   /**
    * Match settings and bugs in Lucene's 7.2.1 release.
+   * @deprecated (7.3.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_7_2_1 = new Version(7, 2, 1);
+
+  /**
+   * Match settings and bugs in Lucene's 7.3.0 release.
+   * @deprecated (7.4.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_7_3_0 = new Version(7, 3, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 7.3.1 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_7_3_1 = new Version(7, 3, 1);
+
+  /**
+   * Match settings and bugs in Lucene's 7.4.0 release.
+   * @deprecated (7.5.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_7_4_0 = new Version(7, 4, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 7.5.0 release.
    * <p>
    * Use this to get the latest &amp; greatest settings, bug
    * fixes, etc, for Lucene.
    */
-  public static final Version LUCENE_7_2_1 = new Version(7, 2, 1);
+  public static final Version LUCENE_7_5_0 = new Version(7, 5, 0);
 
   // To add a new version:
   //  * Only add above this comment
@@ -184,7 +233,7 @@ public final class Version {
    * some defaults may have changed and may break functionality 
    * in your application.
    */
-  public static final Version LATEST = LUCENE_7_2_1;
+  public static final Version LATEST = LUCENE_7_5_0;
 
   /**
    * Constant for backwards compatibility.

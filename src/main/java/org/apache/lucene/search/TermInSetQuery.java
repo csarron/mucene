@@ -148,15 +148,19 @@ public class TermInSetQuery extends Query implements Accountable {
   @Override
   public String toString(String defaultField) {
     StringBuilder builder = new StringBuilder();
-    boolean first = true;
+    builder.append(field);
+    builder.append(":(");
+
     TermIterator iterator = termData.iterator();
+    boolean first = true;
     for (BytesRef term = iterator.next(); term != null; term = iterator.next()) {
       if (!first) {
         builder.append(' ');
       }
       first = false;
-      builder.append(new Term(iterator.field(), term).toString());
+      builder.append(Term.toString(term));
     }
+    builder.append(')');
 
     return builder.toString();
   }
@@ -214,6 +218,15 @@ public class TermInSetQuery extends Query implements Accountable {
         // This query is for abuse cases when the number of terms is too high to
         // run efficiently as a BooleanQuery. So likewise we hide its terms in
         // order to protect highlighters
+      }
+
+      @Override
+      public Matches matches(LeafReaderContext context, int doc) throws IOException {
+        Terms terms = context.reader().terms(field);
+        if (terms == null || terms.hasPositions() == false) {
+          return super.matches(context, doc);
+        }
+        return MatchesUtils.forField(field, () -> DisjunctionMatchesIterator.fromTermsEnum(context, doc, getQuery(), field, termData.iterator()));
       }
 
       /**

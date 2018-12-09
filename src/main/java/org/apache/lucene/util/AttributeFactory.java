@@ -125,13 +125,13 @@ public abstract class AttributeFactory {
       final StaticImplementationAttributeFactory af = (StaticImplementationAttributeFactory) other;
       return this.delegate.equals(af.delegate) && this.clazz == af.clazz;
     }
-    
+
     @Override
     public int hashCode() {
       return 31 * delegate.hashCode() + clazz.hashCode();
     }
   }
-  
+
   /** Returns an AttributeFactory returning an instance of the given {@code clazz} for the
    * attributes it implements. The given {@code clazz} must have a public no-arg constructor.
    * For all other attributes it calls the given delegate factory as fallback.

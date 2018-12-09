@@ -80,6 +80,24 @@ public class TermQuery extends Query {
     }
 
     @Override
+    public Matches matches(LeafReaderContext context, int doc) throws IOException {
+      TermsEnum te = getTermsEnum(context);
+      if (te == null) {
+        return null;
+      }
+      if (context.reader().terms(term.field()).hasPositions() == false) {
+        return super.matches(context, doc);
+      }
+      return MatchesUtils.forField(term.field(), () -> {
+        PostingsEnum pe = te.postings(null, PostingsEnum.OFFSETS);
+        if (pe.advance(doc) != doc) {
+          return null;
+        }
+        return new TermMatchesIterator(getQuery(), pe);
+      });
+    }
+
+    @Override
     public String toString() {
       return "weight(" + TermQuery.this + ")";
     }
@@ -216,7 +234,14 @@ public class TermQuery extends Query {
     return buffer.toString();
   }
 
-  /** Returns true iff <code>o</code> is equal to this. */
+  /** Returns the {@link TermContext} passed to the constructor, or null if it was not passed.
+   *
+   * @lucene.experimental */
+  public TermContext getTermContext() {
+    return perReaderTermState;
+  }
+
+  /** Returns true iff <code>other</code> is equal to <code>this</code>. */
   @Override
   public boolean equals(Object other) {
     return sameClassAs(other) &&

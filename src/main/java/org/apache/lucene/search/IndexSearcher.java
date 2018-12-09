@@ -131,7 +131,7 @@ public class IndexSearcher {
   protected final IndexReaderContext readerContext;
   protected final List<LeafReaderContext> leafContexts;
   /** used with executor - each slice holds a set of leafs executed within one thread */
-  protected final LeafSlice[] leafSlices;
+  private final LeafSlice[] leafSlices;
 
   // These are only used for multi-threaded search
   private final ExecutorService executor;
@@ -397,6 +397,14 @@ public class IndexSearcher {
     return search(query, collectorManager);
   }
 
+  /** Returns the leaf slices used for concurrent searching, or null if no {@code ExecutorService} was
+   *  passed to the constructor.
+   *
+   * @lucene.experimental */
+  public LeafSlice[] getSlices() {
+      return leafSlices;
+  }
+  
   /** Finds the top <code>n</code>
    * hits for <code>query</code> where all results are after a previous 
    * result (<code>after</code>).
@@ -459,7 +467,8 @@ public class IndexSearcher {
    */
   public void search(Query query, Collector results)
     throws IOException {
-    search(leafContexts, createNormalizedWeight(query, results.needsScores()), results);
+    query = rewrite(query);
+    search(leafContexts, createWeight(query, results.needsScores(), 1), results);
   }
 
   /** Search implementation with arbitrary sorting, plus
@@ -591,7 +600,8 @@ public class IndexSearcher {
         needsScores |= collector.needsScores();
       }
 
-      final Weight weight = createNormalizedWeight(query, needsScores);
+      query = rewrite(query);
+      final Weight weight = createWeight(query, needsScores, 1);
       final List<Future<C>> topDocsFutures = new ArrayList<>(leafSlices.length);
       for (int i = 0; i < leafSlices.length; ++i) {
         final LeafReaderContext[] leaves = leafSlices[i].leaves;
@@ -688,7 +698,8 @@ public class IndexSearcher {
    * entire index.
    */
   public Explanation explain(Query query, int doc) throws IOException {
-    return explain(createNormalizedWeight(query, true), doc);
+    query = rewrite(query);
+    return explain(createWeight(query, true, 1), doc);
   }
 
   /** Expert: low-level implementation method
@@ -720,7 +731,11 @@ public class IndexSearcher {
    * afterwards the {@link Weight} is normalized. The returned {@code Weight}
    * can then directly be used to get a {@link Scorer}.
    * @lucene.internal
+   *
+   * @deprecated Clients should rewrite the query and then call {@link #createWeight(Query, boolean, float)}
+   *             with a boost value of 1f
    */
+  @Deprecated
   public Weight createNormalizedWeight(Query query, boolean needsScores) throws IOException {
     query = rewrite(query);
     return createWeight(query, needsScores, 1f);
@@ -756,7 +771,11 @@ public class IndexSearcher {
    * @lucene.experimental
    */
   public static class LeafSlice {
-    final LeafReaderContext[] leaves;
+
+    /** The leaves that make up this slice.
+     *
+     *  @lucene.experimental */
+    public final LeafReaderContext[] leaves;
     
     public LeafSlice(LeafReaderContext... leaves) {
       this.leaves = leaves;

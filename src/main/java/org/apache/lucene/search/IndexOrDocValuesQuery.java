@@ -37,7 +37,7 @@ import org.apache.lucene.index.Term;
  *   String field;
  *   long minValue, maxValue;
  *   Query pointQuery = LongPoint.newRangeQuery(field, minValue, maxValue);
- *   Query dvQuery = SortedNumericDocValuesField.newRangeQuery(field, minValue, maxValue);
+ *   Query dvQuery = SortedNumericDocValuesField.newSlowRangeQuery(field, minValue, maxValue);
  *   Query query = new IndexOrDocValuesQuery(pointQuery, dvQuery);
  * </pre>
  * The above query will be efficient as it will use points in the case that they
@@ -117,6 +117,12 @@ public final class IndexOrDocValuesQuery extends Query {
       @Override
       public void extractTerms(Set<Term> terms) {
         indexWeight.extractTerms(terms);
+      }
+
+      @Override
+      public Matches matches(LeafReaderContext context, int doc) throws IOException {
+        // We need to check a single doc, so the dv query should perform better
+        return dvWeight.matches(context, doc);
       }
 
       @Override
